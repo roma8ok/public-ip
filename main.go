@@ -21,7 +21,7 @@ func handler(w http.ResponseWriter, req *http.Request) {
 
 	resJSON, _ := json.Marshal(res)
 
-	fmt.Fprint(w, resJSON)
+	fmt.Fprintf(w, string(resJSON))
 }
 
 func main() {
