@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -32,13 +31,18 @@ func handler(w http.ResponseWriter, req *http.Request) {
 		XForwardedFor: parseIP(req.Header.Get("X-Forwarded-For")),
 		XRealIP:       parseIP(req.Header.Get("X-Real-Ip")),
 	}
+	fmt.Printf("%#v\n", res)
 
-	resJSON, _ := json.Marshal(res)
-
-	fmt.Fprintf(w, string(resJSON))
+	if res.XForwardedFor == "" {
+		fmt.Fprintf(w, res.RemoteAddr)
+	} else {
+		fmt.Fprintf(w, res.XForwardedFor)
+	}
 }
 
 func main() {
 	http.HandleFunc("/", handler)
-	http.ListenAndServe(":80", nil)
+	if err := http.ListenAndServe(":80", nil); err != nil {
+		fmt.Println(err)
+	}
 }
