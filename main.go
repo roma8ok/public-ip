@@ -3,8 +3,22 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 )
+
+func parseIP(s string) string {
+	ip, _, err := net.SplitHostPort(s)
+	if err == nil {
+		return ip
+	}
+
+	ip2 := net.ParseIP(s)
+	if ip2 == nil {
+		return ""
+	}
+	return ip2.String()
+}
 
 type response struct {
 	RemoteAddr    string `json:"remote_addr"`
@@ -14,9 +28,9 @@ type response struct {
 
 func handler(w http.ResponseWriter, req *http.Request) {
 	res := response{
-		RemoteAddr:    req.RemoteAddr,
-		XForwardedFor: req.Header.Get("X-Forwarded-For"),
-		XRealIP:       req.Header.Get("X-Real-Ip"),
+		RemoteAddr:    parseIP(req.RemoteAddr),
+		XForwardedFor: parseIP(req.Header.Get("X-Forwarded-For")),
+		XRealIP:       parseIP(req.Header.Get("X-Real-Ip")),
 	}
 
 	resJSON, _ := json.Marshal(res)
