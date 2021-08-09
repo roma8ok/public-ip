@@ -1,48 +1,84 @@
 package main
 
 import (
-	"fmt"
+	"io"
+	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
-func parseIP(s string) string {
+// getIP tries to find the IP from ip:port string.
+// If there is no IP in the string, getIP returns an empty string.
+// getIP doesn't check the port for validity. This means getIP("127.0.0.1:100000") returns "127.0.0.1".
+func getIP(s string) string {
 	ip, _, err := net.SplitHostPort(s)
-	if err == nil {
-		return ip
+	if err != nil {
+		ip2 := net.ParseIP(s)
+		if ip2 == nil {
+			return ""
+		}
+		return ip2.String()
 	}
 
-	ip2 := net.ParseIP(s)
-	if ip2 == nil {
+	ip3 := net.ParseIP(ip)
+	if ip3 == nil {
 		return ""
 	}
-	return ip2.String()
+	return ip3.String()
 }
 
-type response struct {
-	RemoteAddr    string `json:"remote_addr"`
-	XForwardedFor string `json:"x_forwarded_for"`
-	XRealIP       string `json:"x_real_ip"`
+// getIPFromRequest returns the IP from header X-Forwarded-For or from header X-Real-Ip or from request.RemoteAddr.
+// If there is no IP, getIPFromRequest returns an empty string.
+func getIPFromRequest(req *http.Request) string {
+	if xForwardedFor := req.Header.Get("X-Forwarded-For"); xForwardedFor != "" {
+		if ip := getIP(xForwardedFor); ip != "" {
+			return xForwardedFor
+		}
+	}
+
+	if xRealIP := req.Header.Get("X-Real-Ip"); xRealIP != "" {
+		if ip := getIP(xRealIP); ip != "" {
+			return xRealIP
+		}
+	}
+
+	return getIP(req.RemoteAddr)
 }
 
 func handler(w http.ResponseWriter, req *http.Request) {
-	res := response{
-		RemoteAddr:    parseIP(req.RemoteAddr),
-		XForwardedFor: parseIP(req.Header.Get("X-Forwarded-For")),
-		XRealIP:       parseIP(req.Header.Get("X-Real-Ip")),
-	}
-	fmt.Printf("%#v\n", res)
-
-	if res.XForwardedFor == "" {
-		fmt.Fprintf(w, res.RemoteAddr)
-	} else {
-		fmt.Fprintf(w, res.XForwardedFor)
-	}
+	_, _ = io.WriteString(w, getIPFromRequest(req))
 }
 
 func main() {
+	exit := make(chan os.Signal, 1)
+	signal.Notify(exit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
+
+	logger := log.New(os.Stderr, "public-ip: ", log.Ldate|log.Ltime|log.Lshortfile)
+	logger.Print("Service started")
+
 	http.HandleFunc("/", handler)
-	if err := http.ListenAndServe(":80", nil); err != nil {
-		fmt.Println(err)
+
+	go func() {
+		if err := http.ListenAndServe(":80", nil); err != nil {
+			logger.Print(err)
+		}
+	}()
+
+	args := os.Args
+	if len(args) == 3 {
+		go func() {
+			if err := http.ListenAndServeTLS(":443", args[1], args[2], nil); err != nil {
+				logger.Print(err)
+			}
+		}()
+	} else {
+		logger.Print("Paths to certificate and private key files are required to start HTTPS. HTTPS is not started.")
+	}
+
+	if stop := <-exit; stop != nil {
+		logger.Fatal("Service stopped")
 	}
 }
