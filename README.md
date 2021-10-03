@@ -2,14 +2,12 @@
 
 The server returns the public IP of the request.
 
-Run on https://public-ip.dev.
-
 Supported http and https. Requests are not logged.
 
 ### Example
 
 Request:
-`curl https://public-ip.dev`
+`curl https://path-to-service.com`
 
 Response:
 `170.44.249.129`
